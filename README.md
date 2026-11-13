@@ -1,4 +1,4 @@
-# Hospitalist OS v1.4.1 — Clinical Productivity Edition
+# Hospitalist OS v1.4.2 — Clinical Productivity Edition
 
 ## What changed
 - **Off day** in Shift Type: saving Off forces zero actual and paid hours and removes start/end times; excluded from shift count while shown in calendar.
@@ -15,5 +15,8 @@
 ## Clinical privacy
 No patient-identifiable data. Do not enter PHI, MRNs, names or identifiable narratives into the app or any future sync backend.
 
-## v1.4.1 layout correction
+## v1.4.2 layout correction
 Replaced the oversized horizontal CPT cards with a native select control located in the CPT code field, matching the Shift Type control. Existing local billing data is preserved. The 2026 preset values remain editable after selection.
+
+## Cache refresh improvement
+The service worker now checks the network first when online and falls back to stored app files offline. This reduces repeated stale-code views after GitHub Pages deployments. A previously installed old service worker may still require one hard refresh or a re-open while online.
