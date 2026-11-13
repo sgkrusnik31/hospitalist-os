@@ -98,12 +98,17 @@ const COMMON_CPT=[
  ['99497','Advance care planning · first service',null],['99498','Advance care planning · additional',null],
  ['99406','Tobacco cessation · 3–10 min',null],['99407','Tobacco cessation · >10 min',null]
 ];
-function selectCPT(code){const preset=COMMON_CPT.find(c=>c[0]===code);if(!preset)return;
- $('bill-code').value=preset[0];$('bill-desc').value=preset[1];$('bill-value').value=preset[2]===null?'':preset[2].toFixed(2);updateCPTSelection();}
-function updateCPTSelection(){const code=$('bill-code').value.trim().toUpperCase();document.querySelectorAll('[data-cpt]').forEach(b=>b.classList.toggle('selected',b.dataset.cpt===code));const preset=COMMON_CPT.find(x=>x[0]===code);$('cpt-status').textContent=preset?(preset[2]===null?'wRVU not preverified — enter after checking current CMS file.':`2026 work RVU: ${preset[2].toFixed(2)} per unit. Verify coding eligibility.`):'Manual CPT/HCPCS entry: verify its current work RVU before saving.';}
-$('code-picker').innerHTML=COMMON_CPT.map(([code,label,value])=>`<button type="button" class="cpt-chip" data-cpt="${code}" title="${esc(label)}"><strong>${code}</strong><span>${esc(label)}</span><small>${value===null?'Verify wRVU':value.toFixed(2)+' wRVU'}</small></button>`).join('')+'<div class="code-note" id="cpt-status" aria-live="polite"></div>';
-$('code-picker').addEventListener('click',e=>{const b=e.target.closest('[data-cpt]');if(b)selectCPT(b.dataset.cpt);});
-$('bill-code').addEventListener('change',()=>{const match=COMMON_CPT.find(x=>x[0]===$('bill-code').value.trim());if(match)selectCPT(match[0]);else updateCPTSelection();});
+function selectCPT(code){
+ const preset=COMMON_CPT.find(c=>c[0]===code);
+ if(!preset){$('bill-code').value='';$('bill-desc').value='';$('bill-value').value='';updateCPTSelection();return;}
+ $('bill-code').value=preset[0];$('bill-desc').value=preset[1];$('bill-value').value=preset[2]===null?'':preset[2].toFixed(2);updateCPTSelection();
+}
+function updateCPTSelection(){
+ const code=$('bill-code').value.trim().toUpperCase(),preset=COMMON_CPT.find(x=>x[0]===code);
+ $('cpt-status').textContent=preset?(preset[2]===null?'Verify this code’s current wRVU before saving.':`2026 work RVU: ${preset[2].toFixed(2)} per unit. Verify coding eligibility.`):'Select a code to autofill its description and wRVU.';
+}
+$('bill-code').innerHTML='<option value="">Choose a CPT / HCPCS code…</option>'+COMMON_CPT.map(([code,label,value])=>`<option value="${code}">${code} — ${esc(label)}${value===null?' · verify wRVU':' · '+value.toFixed(2)+' wRVU'}</option>`).join('');
+$('bill-code').addEventListener('change',()=>selectCPT($('bill-code').value));
 function renderBilling(){const m=$('bill-month-filter').value||month(),list=db.billing.filter(b=>b.date.startsWith(m));$('b-rvu').textContent=sum(list,b=>num(b.units)*num(b.value)).toFixed(2);$('bill-rows').innerHTML=sorted(list).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.code)}</td><td>${esc(x.desc)}</td><td>${num(x.units)}</td><td>${num(x.value).toFixed(2)}</td><td>${(num(x.units)*num(x.value)).toFixed(2)}</td><td>${actionButtons('billing',x.id)}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">No billing entries for this month.</td></tr>';}
 $('bill-month-filter').addEventListener('change',renderBilling);
 $('bill-form').onsubmit=e=>{e.preventDefault();let x={id:$('bill-id').value||uid(),date:$('bill-date').value,code:cleanString($('bill-code').value,12),desc:cleanString($('bill-desc').value,90),units:num($('bill-units').value),value:num($('bill-value').value),mod:cleanString($('bill-mod').value,60)};if(x.units<=0){alert('Enter a positive unit count.');return;}if(!$('bill-value').value.trim()){alert('Verify and enter the work RVU for this code before saving.');return;}db.billing=db.billing.filter(b=>b.id!==x.id);db.billing.push(x);resetBill();save();};
