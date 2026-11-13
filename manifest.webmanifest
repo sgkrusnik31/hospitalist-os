@@ -1,7 +1,7 @@
 {
   "name": "Hospitalist OS \u2014 Physician Work Dashboard",
   "short_name": "Hospitalist OS",
-  "description": "Private offline-first schedule, billing, payroll and documentation tools",
+  "description": "Private offline-first schedule, wRVU activity, GME hours and generic documentation tools",
   "id": "./",
   "start_url": "./index.html",
   "scope": "./",
