@@ -35,7 +35,7 @@ const sum=(rows,f)=>rows.reduce((t,x)=>t+f(x),0);
 const sorted=rows=>[...rows].sort((a,b)=>b.date.localeCompare(a.date));
 const hours=(start,end)=>{if(!start||!end)return 0;const [h1,m1]=start.split(':').map(Number),[h2,m2]=end.split(':').map(Number);let t=h2*60+m2-h1*60-m1;return (t<0?t+1440:t)/60;};
 const month=()=>today().slice(0,7);
-function save(){try{localStorage.setItem(KEY,JSON.stringify(db));render();}catch(e){alert('Could not save locally. Export a backup and check available storage.');}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db));render();window.HospitalistSync?.onLocalChange?.();}catch(e){alert('Could not save locally. Export a backup and check available storage.');}}
 function goto(view){
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===view));
  document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===view));
@@ -109,7 +109,7 @@ function updateCPTSelection(){
 }
 $('bill-code').innerHTML='<option value="">Choose a CPT / HCPCS code…</option>'+COMMON_CPT.map(([code,label,value])=>`<option value="${code}">${code} — ${esc(label)}${value===null?' · verify wRVU':' · '+value.toFixed(2)+' wRVU'}</option>`).join('');
 $('bill-code').addEventListener('change',()=>selectCPT($('bill-code').value));
-function renderBilling(){const m=$('bill-month-filter').value||month(),list=db.billing.filter(b=>b.date.startsWith(m));$('b-rvu').textContent=sum(list,b=>num(b.units)*num(b.value)).toFixed(2);$('bill-rows').innerHTML=sorted(list).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.code)}</td><td>${esc(x.desc)}</td><td>${num(x.units)}</td><td>${num(x.value).toFixed(2)}</td><td>${(num(x.units)*num(x.value)).toFixed(2)}</td><td>${actionButtons('billing',x.id)}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">No billing entries for this month.</td></tr>';}
+function renderBilling(){const m=$('bill-month-filter').value||month(),list=db.billing.filter(b=>b.date.startsWith(m));$('b-rvu').textContent=sum(list,b=>num(b.units)*num(b.value)).toFixed(2);$('billing-summary').innerHTML=`<div><b>${sum(list,b=>num(b.units))}</b><span>Encounters coded</span></div><div><b>${new Set(list.map(b=>b.date)).size}</b><span>Billing dates</span></div><div><b>${(sum(list,b=>num(b.units)*num(b.value))/Math.max(1,new Set(list.map(b=>b.date)).size)).toFixed(2)}</b><span>wRVU / billing day</span></div>`;$('bill-rows').innerHTML=sorted(list).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.code)}</td><td>${esc(x.desc)}</td><td>${num(x.units)}</td><td>${num(x.value).toFixed(2)}</td><td>${(num(x.units)*num(x.value)).toFixed(2)}</td><td>${actionButtons('billing',x.id)}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">No billing entries for this month.</td></tr>';}
 $('bill-month-filter').addEventListener('change',renderBilling);
 $('bill-form').onsubmit=e=>{e.preventDefault();let x={id:$('bill-id').value||uid(),date:$('bill-date').value,code:cleanString($('bill-code').value,12),desc:cleanString($('bill-desc').value,90),units:num($('bill-units').value),value:num($('bill-value').value),mod:cleanString($('bill-mod').value,60)};if(x.units<=0){alert('Enter a positive unit count.');return;}if(!$('bill-value').value.trim()){alert('Verify and enter the work RVU for this code before saving.');return;}db.billing=db.billing.filter(b=>b.id!==x.id);db.billing.push(x);resetBill();save();};
 function gmeHours(start,end,breaks){return Math.max(0,hours(start,end)*60-num(breaks))/60;}
@@ -142,3 +142,5 @@ function exportJSON(){download(`hospitalist-os-clinical-backup-${today()}.json`,
 $('import-file').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const raw=JSON.parse(await f.text());if(!permitted.some(name=>Array.isArray(raw[name])))throw Error('Invalid backup format');if(!confirm('Replace your current clinical-only records with this backup? Existing records will be overwritten. Financial fields are always ignored.'))return;db=sanitize(raw);save();alert('Clinical records imported.');}catch(err){alert('Unable to import backup: '+err.message);}finally{e.target.value='';}});
 function clearAll(){if(!confirm('Permanently erase this app’s clinical-only local records? Export a backup first.'))return;db=newDB();save();}
 resetShift();resetWork();resetBill();resetGME();$('bill-month-filter').value=month();generateNote();capAdvice();render();
+
+window.HospitalistData={get:()=>JSON.parse(JSON.stringify(db)), set:(raw)=>{db=sanitize(raw);localStorage.setItem(KEY,JSON.stringify(db));render();},sanitize};

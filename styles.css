@@ -11,3 +11,5 @@
 /* v1.4.1 native, vertically scrolling CPT selector matching Shift Type */
 #bill-code{appearance:auto;min-height:43px;max-width:100%;cursor:pointer}
 .field-help{margin-top:6px;color:var(--muted);font-size:11px;line-height:1.45}
+
+.thin-rule{border:0;border-top:1px solid var(--line);margin:20px 0}.mini-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.mini-stats>div{padding:10px;background:#102035;border:1px solid var(--line);border-radius:9px}.mini-stats b{display:block;font-size:20px}.mini-stats span{display:block;color:var(--muted);font-size:11px;margin-top:4px}@media(max-width:700px){.mini-stats{grid-template-columns:1fr}}
