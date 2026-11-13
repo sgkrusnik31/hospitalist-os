@@ -1,5 +1,5 @@
 'use strict';
-// Clinical-only v1.3. Legacy data is read once and only non-financial fields are copied.
+// Clinical-only v1.4. Legacy data is read once and only non-financial fields are copied.
 const KEY = 'hospitalist-os-clinical-v1', LEGACY_KEY = 'hospitalist-os-v1';
 const $ = id => document.getElementById(id);
 const today = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
@@ -7,7 +7,7 @@ const num = x => Number(x)||0;
 const esc = x => String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid = () => globalThis.crypto?.randomUUID?.() || String(Date.now())+Math.random().toString(36).slice(2);
 const cleanString=(s,n=180)=>String(s??'').slice(0,n);
-const newDB=()=>({version:3,shifts:[],work:[],billing:[],gme:[]});
+const newDB=()=>({version:4,shifts:[],work:[],billing:[],gme:[]});
 const permitted=['shifts','work','billing','gme'];
 function sanitize(raw){
  const result=newDB();
@@ -16,7 +16,7 @@ function sanitize(raw){
    if(!Array.isArray(raw[name]))continue;
    result[name]=raw[name].slice(0,25000).filter(x=>x&&typeof x==='object'&&/^\d{4}-\d{2}-\d{2}$/.test(x.date||'')).map(x=>{
      const base={id:cleanString(x.id||uid(),80),date:x.date};
-     if(name==='shifts')return {...base,type:['regular','extra','call'].includes(x.type)?x.type:'regular',start:cleanString(x.start||'07:00',5),end:cleanString(x.end||'19:00',5),actual:Math.max(0,num(x.actual)),paid:Math.max(0,num(x.paid)),note:cleanString(x.note)};
+     if(name==='shifts')return {...base,type:['regular','extra','call','off'].includes(x.type)?x.type:'regular',start:cleanString(x.start||'07:00',5),end:cleanString(x.end||'19:00',5),actual:Math.max(0,num(x.actual)),paid:Math.max(0,num(x.paid)),note:cleanString(x.note)};
      if(name==='work')return {...base,census:Math.max(0,num(x.census)),admits:Math.max(0,num(x.admits)),discharges:Math.max(0,num(x.discharges)),residents:Math.max(0,num(x.residents)),interns:Math.max(0,num(x.interns))};
      if(name==='billing')return {...base,code:cleanString(x.code,12),desc:cleanString(x.desc,90),units:Math.max(0,num(x.units)),value:Math.max(0,num(x.value)),mod:cleanString(x.mod,60)};
      return {...base,type:cleanString(x.type,80),start:cleanString(x.start,5),end:cleanString(x.end,5),break:Math.max(0,num(x.break)),hours:Math.max(0,num(x.hours)),note:cleanString(x.note,160)};
@@ -47,7 +47,7 @@ document.querySelectorAll('.nav button').forEach(b=>b.addEventListener('click',(
 function render(){
  const ss=db.shifts.filter(x=>x.date.startsWith(month())),ww=db.work.filter(x=>x.date.startsWith(month())),bb=db.billing.filter(x=>x.date.startsWith(month()));
  $('month-pill').textContent=new Date().toLocaleDateString('en-US',{month:'long',year:'numeric'});
- $('m-shifts').textContent=ss.length;
+ $('m-shifts').textContent=ss.filter(s=>s.type!=='off').length;
  $('m-hours').textContent=`${sum(ss,s=>num(s.actual)).toFixed(1)} / ${sum(ss,s=>num(s.paid)).toFixed(1)}`;
  $('m-admits').textContent=`${sum(ww,w=>num(w.admits))} / ${sum(bb,b=>num(b.units))}`;
  $('m-rvu').textContent=sum(bb,b=>num(b.units)*num(b.value)).toFixed(2);
@@ -68,28 +68,45 @@ function renderCalendar(){
  for(let n=0;n<first;n++)html+='<div class="day fade"></div>';
  for(let n=1;n<=total;n++){
   const date=`${y}-${String(m+1).padStart(2,'0')}-${String(n).padStart(2,'0')}`;
-  const tags=(shiftMap[date]||[]).map(x=>`<div class="event ${esc(x)}">${x==='call'?'Home call':x==='extra'?'Extra':'Regular'}</div>`).join('');
+  const tags=(shiftMap[date]||[]).map(x=>`<div class="event ${esc(x)}">${x==='call'?'Home call':x==='extra'?'Extra':x==='off'?'Off':'Regular'}</div>`).join('');
   html+=`<div class="day ${date===today()?'today':''}"><b class="num">${n}</b>${tags}${restrictions.has(date)?'<div class="event restrict">Post-call</div>':''}</div>`;
  }
  $('cal-grid').innerHTML=html;
 }
-function resetShift(){$('shift-form').reset();$('shift-id').value='';$('shift-date').value=today();$('shift-start').value='07:00';$('shift-end').value='19:00';}
+function resetShift(){$('shift-form').reset();$('shift-id').value='';$('shift-date').value=today();$('shift-start').value='07:00';$('shift-end').value='19:00';updateOffFields();}
 function resetWork(){$('work-form').reset();$('work-id').value='';$('work-date').value=today();}
-function resetBill(){$('bill-form').reset();$('bill-id').value='';$('bill-date').value=today();}
+function resetBill(){$('bill-form').reset();$('bill-id').value='';$('bill-date').value=today();updateCPTSelection();}
 function resetGME(){$('gme-form').reset();$('gme-id').value='';$('gme-date').value=today()<'2026-12-01'?'2026-12-01':today();$('gme-start').value='12:00';$('gme-end').value='13:00';$('gme-break').value=0;updateGMEHours();}
-$('shift-type').addEventListener('change',()=>{if($('shift-type').value==='call'){$('shift-start').value='19:00';$('shift-end').value='07:00';}else{$('shift-start').value='07:00';$('shift-end').value='19:00';}});
+function updateOffFields(){const off=$('shift-type').value==='off';for(const id of ['shift-start','shift-end','shift-actual','shift-paid']){$(id).disabled=off;}if(off){$('shift-start').value='';$('shift-end').value='';$('shift-actual').value='0';$('shift-paid').value='0';}}
+$('shift-type').addEventListener('change',()=>{if($('shift-type').value==='call'){$('shift-start').value='19:00';$('shift-end').value='07:00';}else if($('shift-type').value!=='off'){$('shift-start').value='07:00';$('shift-end').value='19:00';}updateOffFields();});
 function actionButtons(name,id){const a=esc(id);return `<button class="btn small" data-action="edit" data-list="${name}" data-id="${a}">Edit</button> <button class="btn small danger" data-action="delete" data-list="${name}" data-id="${a}">×</button>`;}
 function renderShifts(){
- $('shift-rows').innerHTML=sorted(db.shifts).map(s=>`<tr><td>${esc(s.date)}</td><td>${esc(s.type)}</td><td>${esc(s.start)}–${esc(s.end)} (${hours(s.start,s.end).toFixed(1)}h)</td><td>${num(s.actual).toFixed(2)}</td><td>${num(s.paid).toFixed(2)}</td><td>${(num(s.paid)-num(s.actual)).toFixed(2)}</td><td>${actionButtons('shifts',s.id)}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">No shifts recorded.</td></tr>';
+ $('shift-rows').innerHTML=sorted(db.shifts).map(s=>`<tr><td>${esc(s.date)}</td><td>${esc(s.type)}</td><td>${s.type==='off'?'—':`${esc(s.start)}–${esc(s.end)} (${hours(s.start,s.end).toFixed(1)}h)`}</td><td>${num(s.actual).toFixed(2)}</td><td>${num(s.paid).toFixed(2)}</td><td>${(num(s.paid)-num(s.actual)).toFixed(2)}</td><td>${actionButtons('shifts',s.id)}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">No shifts recorded.</td></tr>';
  $('work-rows').innerHTML=sorted(db.work).map(w=>`<tr><td>${esc(w.date)}</td><td>${num(w.census)}</td><td>${num(w.admits)}</td><td>${num(w.discharges)}</td><td>${num(w.residents)}</td><td>${actionButtons('work',w.id)}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">No workload entries recorded.</td></tr>';
 }
-$('shift-form').onsubmit=e=>{e.preventDefault();const x={id:$('shift-id').value||uid(),date:$('shift-date').value,type:$('shift-type').value,start:$('shift-start').value,end:$('shift-end').value,actual:num($('shift-actual').value),paid:num($('shift-paid').value),note:cleanString($('shift-note').value)};db.shifts=db.shifts.filter(s=>s.id!==x.id);db.shifts.push(x);resetShift();save();};
+$('shift-form').onsubmit=e=>{e.preventDefault();const isOff=$('shift-type').value==='off';const x={id:$('shift-id').value||uid(),date:$('shift-date').value,type:$('shift-type').value,start:isOff?'':$('shift-start').value,end:isOff?'':$('shift-end').value,actual:isOff?0:num($('shift-actual').value),paid:isOff?0:num($('shift-paid').value),note:cleanString($('shift-note').value)};db.shifts=db.shifts.filter(s=>s.id!==x.id);db.shifts.push(x);resetShift();save();};
 $('work-form').onsubmit=e=>{e.preventDefault();const x={id:$('work-id').value||uid(),date:$('work-date').value,census:num($('work-census').value),admits:num($('work-admits').value),discharges:num($('work-discharges').value),residents:num($('work-residents').value),interns:num($('work-interns').value)};db.work=db.work.filter(s=>s.id!==x.id);db.work.push(x);resetWork();save();};
 function capAdvice(){let cap=Number($('work-interns').value)===2?20:Number($('work-interns').value)===1?14:0,c=num($('work-residents').value);$('cap-advice').textContent=cap?`Usual resident cap: ${cap} with ${$('work-interns').value} intern(s). ${c>cap?'Entered team census exceeds usual cap; verify staffing.':''}`:'No resident-team cap applied when there are no interns.';}
 $('work-residents').addEventListener('input',capAdvice);$('work-interns').addEventListener('change',capAdvice);
+// Preset values: 2026 work RVUs (not facility total RVUs), CMS/SGO 2026 E/M table.
+const COMMON_CPT=[
+ ['99221','Admission · low',1.63],['99222','Admission · moderate',2.60],['99223','Admission · high',3.50],
+ ['99231','Follow-up · low',1.00],['99232','Follow-up · moderate',1.59],['99233','Follow-up · high',2.40],
+ ['99234','Same-day admit/DC · low',2.00],['99235','Same-day admit/DC · moderate',3.24],['99236','Same-day admit/DC · high',4.30],
+ ['99238','Discharge · ≤30 min',1.50],['99239','Discharge · >30 min',2.15],
+ ['99291','Critical care · first 30–74 min',4.50],['99292','Critical care · additional time',2.25],
+ ['99497','Advance care planning · first service',null],['99498','Advance care planning · additional',null],
+ ['99406','Tobacco cessation · 3–10 min',null],['99407','Tobacco cessation · >10 min',null]
+];
+function selectCPT(code){const preset=COMMON_CPT.find(c=>c[0]===code);if(!preset)return;
+ $('bill-code').value=preset[0];$('bill-desc').value=preset[1];$('bill-value').value=preset[2]===null?'':preset[2].toFixed(2);updateCPTSelection();}
+function updateCPTSelection(){const code=$('bill-code').value.trim().toUpperCase();document.querySelectorAll('[data-cpt]').forEach(b=>b.classList.toggle('selected',b.dataset.cpt===code));const preset=COMMON_CPT.find(x=>x[0]===code);$('cpt-status').textContent=preset?(preset[2]===null?'wRVU not preverified — enter after checking current CMS file.':`2026 work RVU: ${preset[2].toFixed(2)} per unit. Verify coding eligibility.`):'Manual CPT/HCPCS entry: verify its current work RVU before saving.';}
+$('code-picker').innerHTML=COMMON_CPT.map(([code,label,value])=>`<button type="button" class="cpt-chip" data-cpt="${code}" title="${esc(label)}"><strong>${code}</strong><span>${esc(label)}</span><small>${value===null?'Verify wRVU':value.toFixed(2)+' wRVU'}</small></button>`).join('')+'<div class="code-note" id="cpt-status" aria-live="polite"></div>';
+$('code-picker').addEventListener('click',e=>{const b=e.target.closest('[data-cpt]');if(b)selectCPT(b.dataset.cpt);});
+$('bill-code').addEventListener('change',()=>{const match=COMMON_CPT.find(x=>x[0]===$('bill-code').value.trim());if(match)selectCPT(match[0]);else updateCPTSelection();});
 function renderBilling(){const m=$('bill-month-filter').value||month(),list=db.billing.filter(b=>b.date.startsWith(m));$('b-rvu').textContent=sum(list,b=>num(b.units)*num(b.value)).toFixed(2);$('bill-rows').innerHTML=sorted(list).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.code)}</td><td>${esc(x.desc)}</td><td>${num(x.units)}</td><td>${num(x.value).toFixed(2)}</td><td>${(num(x.units)*num(x.value)).toFixed(2)}</td><td>${actionButtons('billing',x.id)}</td></tr>`).join('')||'<tr><td colspan="7" class="empty">No billing entries for this month.</td></tr>';}
 $('bill-month-filter').addEventListener('change',renderBilling);
-$('bill-form').onsubmit=e=>{e.preventDefault();let x={id:$('bill-id').value||uid(),date:$('bill-date').value,code:cleanString($('bill-code').value,12),desc:cleanString($('bill-desc').value,90),units:num($('bill-units').value),value:num($('bill-value').value),mod:cleanString($('bill-mod').value,60)};if(x.units<=0){alert('Enter a positive unit count.');return;}db.billing=db.billing.filter(b=>b.id!==x.id);db.billing.push(x);resetBill();save();};
+$('bill-form').onsubmit=e=>{e.preventDefault();let x={id:$('bill-id').value||uid(),date:$('bill-date').value,code:cleanString($('bill-code').value,12),desc:cleanString($('bill-desc').value,90),units:num($('bill-units').value),value:num($('bill-value').value),mod:cleanString($('bill-mod').value,60)};if(x.units<=0){alert('Enter a positive unit count.');return;}if(!$('bill-value').value.trim()){alert('Verify and enter the work RVU for this code before saving.');return;}db.billing=db.billing.filter(b=>b.id!==x.id);db.billing.push(x);resetBill();save();};
 function gmeHours(start,end,breaks){return Math.max(0,hours(start,end)*60-num(breaks))/60;}
 function updateGMEHours(){if($('gme-start').value&&$('gme-end').value)$('gme-hours').value=gmeHours($('gme-start').value,$('gme-end').value,$('gme-break').value).toFixed(2);}
 ['start','end','break'].forEach(k=>$('gme-'+k).addEventListener('change',updateGMEHours));
@@ -99,7 +116,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('[data-action]');
  if(action==='delete'){if(confirm('Delete this entry?')){db[list]=db[list].filter(z=>z.id!==id);save();}return;}
  const prefix={shifts:'shift',work:'work',billing:'bill',gme:'gme'}[list];goto({shifts:'shifts',work:'shifts',billing:'billing',gme:'gme'}[list]);
  const fields={shifts:['id','date','type','start','end','actual','paid','note'],work:['id','date','census','admits','discharges','residents','interns'],billing:['id','date','code','desc','units','value','mod'],gme:['id','date','type','start','end','break','hours','note']}[list];
- for(const k of fields){const input=$(prefix+'-'+k);if(input)input.value=x[k]??'';}
+ for(const k of fields){const input=$(prefix+'-'+k);if(input)input.value=x[k]??'';}if(list==='shifts')updateOffFields();if(list==='billing')updateCPTSelection();
 });
 const templates={
  hp:['HPI:\n[Presentation and pertinent clinical history; ED evaluation/interventions.]\n\nAssessment & Plan:\n1. [Problem] - [Evidence, clinical impression, treatment/workup]\n2. [Problem] - [Plan]\n\nDisposition: [Barriers / next steps]','Chief concern: [ ]\nHPI: [ ]\nPertinent studies: [ ]\nExam: [Observed findings only]\nAssessment/Plan:\n1. [Problem / reasoning / plan]\nDisposition: [ ]'],
